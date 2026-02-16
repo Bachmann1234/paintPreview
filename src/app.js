@@ -2,7 +2,6 @@ import {
   hexToRgb,
   rlEncode,
   rlDecode,
-  rlDecodeSigned,
   blendMultiply,
   blendOverlay,
   blendSoftLight,
@@ -4178,9 +4177,6 @@ function setupImageFromDataUrl(dataUrl) {
 
     maskData = new Uint8Array(img.width * img.height);
 
-    // Try loading saved mask
-    loadSavedMask();
-
     // Reset undo/redo for new image
     undoStack = [];
     redoStack = [];
@@ -4706,26 +4702,6 @@ function zoomAtPoint(factor, cx, cy) {
 }
 
 // ===== SAVE / LOAD =====
-function getMaskPayload() {
-  return {
-    version: 2,
-    width: img.width,
-    height: img.height,
-    zones: zones,
-    mask: rlEncode(maskData),
-  };
-}
-
-function saveMask() {
-  if (!img) return;
-  localStorage.setItem("wallMaskData", JSON.stringify(getMaskPayload()));
-  const btn = document.getElementById("saveMask");
-  btn.textContent = "Saved!";
-  setTimeout(() => {
-    btn.textContent = "Save";
-  }, 1500);
-}
-
 function getProjectPayload() {
   return {
     version: 3,
@@ -4802,35 +4778,6 @@ function importMask() {
     };
     reader.readAsText(file);
   });
-}
-
-function loadSavedMask() {
-  const raw = localStorage.getItem("wallMaskData");
-  if (!raw) return;
-  try {
-    const data = JSON.parse(raw);
-    if (data.width !== img.width || data.height !== img.height) return;
-
-    if (data.version === 2) {
-      maskData = rlDecode(data.mask, img.width * img.height);
-      if (data.zones && data.zones.length > 0) {
-        zones = data.zones;
-        activeZone = 0;
-        renderZoneList();
-      }
-    } else {
-      // Legacy format: convert manualMask (Int8Array: 1=wall, -1=erased, 0=auto)
-      const decoded = new Int8Array(
-        data.mask ? rlDecodeSigned(data.mask, img.width * img.height) : [],
-      );
-      maskData = new Uint8Array(img.width * img.height);
-      for (let i = 0; i < decoded.length; i++) {
-        if (decoded[i] === 1) maskData[i] = 1;
-      }
-    }
-  } catch {
-    /* ignore bad data */
-  }
 }
 
 // ===== ZONE MANAGEMENT =====
@@ -5114,43 +5061,6 @@ function setupEvents() {
     zones.push({ name: `Zone ${zones.length + 1}`, color });
     activeZone = zones.length - 1;
     renderZoneList();
-  });
-
-  // Save / Load
-  document.getElementById("saveMask").addEventListener("click", saveMask);
-  document.getElementById("loadMask").addEventListener("click", () => {
-    if (!img) return;
-    const raw = localStorage.getItem("wallMaskData");
-    if (!raw) {
-      alert("No saved mask found.");
-      return;
-    }
-    try {
-      const data = JSON.parse(raw);
-      if (data.width !== img.width || data.height !== img.height) {
-        alert("Saved mask dimensions do not match.");
-        return;
-      }
-      if (data.version === 2) {
-        maskData = rlDecode(data.mask, img.width * img.height);
-        if (data.zones) {
-          zones = data.zones;
-          activeZone = 0;
-          renderZoneList();
-        }
-      }
-      undoStack = [];
-      redoStack = [];
-      updateUndoButtons();
-      render();
-      const btn = document.getElementById("loadMask");
-      btn.textContent = "Loaded!";
-      setTimeout(() => {
-        btn.textContent = "Load";
-      }, 1500);
-    } catch {
-      alert("Failed to load mask.");
-    }
   });
 
   // Export / Import
