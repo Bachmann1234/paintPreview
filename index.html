@@ -215,6 +215,44 @@
         border-style: solid;
       }
 
+      /* Project switcher */
+      .project-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 6px;
+      }
+      .project-row select {
+        flex: 1;
+        min-width: 0;
+        padding: 5px 6px;
+        background: #0f3460;
+        border: 1px solid #1a5276;
+        border-radius: 6px;
+        color: #e0e0e0;
+        font-size: 12px;
+        outline: none;
+        cursor: pointer;
+      }
+      .project-row select:focus {
+        border-color: #e94560;
+      }
+      .project-row button {
+        background: none;
+        border: none;
+        color: #606070;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 2px 4px;
+        line-height: 1;
+      }
+      .project-row button:hover {
+        color: #e0e0e0;
+      }
+      .project-row .project-delete-btn:hover {
+        color: #e94560;
+      }
+
       .preset-search {
         width: 100%;
         padding: 6px 8px;
@@ -747,6 +785,19 @@
     <div class="main-area">
       <div class="sidebar" id="sidebar">
         <div>
+          <div class="project-row">
+            <select id="projectSelect"></select>
+            <button id="projectRenameBtn" title="Rename project">
+              &#9998;
+            </button>
+            <button
+              id="projectDeleteBtn"
+              class="project-delete-btn"
+              title="Delete project"
+            >
+              &times;
+            </button>
+          </div>
           <h2>Zones</h2>
           <div class="zone-list" id="zoneList"></div>
           <button class="add-zone-btn" id="addZoneBtn">+ Add Zone</button>
