@@ -332,7 +332,9 @@
         justify-content: center;
         z-index: 100;
       }
-      .start-screen.hidden { display: none; }
+      .start-screen.hidden {
+        display: none;
+      }
       .start-content {
         text-align: center;
         display: flex;
@@ -362,13 +364,17 @@
         cursor: pointer;
         transition: all 0.15s;
       }
-      .start-btn:hover { background: #1a5276; }
+      .start-btn:hover {
+        background: #1a5276;
+      }
       .start-btn.primary {
         background: #e94560;
         border-color: #e94560;
         color: white;
       }
-      .start-btn.primary:hover { background: #d63851; }
+      .start-btn.primary:hover {
+        background: #d63851;
+      }
       .start-drop {
         margin-top: 8px;
         padding: 32px 48px;
@@ -380,7 +386,7 @@
       }
       .start-drop.dragover {
         border-color: #e94560;
-        background: rgba(233,69,96,0.08);
+        background: rgba(233, 69, 96, 0.08);
         color: #e0e0e0;
       }
 
@@ -658,7 +664,9 @@
         <h1>Wall Color Previewer</h1>
         <p>Load an image to get started</p>
         <div class="start-buttons">
-          <button class="start-btn primary" id="startLoadImage">Load Image</button>
+          <button class="start-btn primary" id="startLoadImage">
+            Load Image
+          </button>
           <button class="start-btn" id="startOpenProject">Open Project</button>
         </div>
         <div class="start-drop" id="startDrop">
@@ -718,7 +726,13 @@
             <button class="save-load-btn" id="exportMask">Export</button>
             <button class="save-load-btn" id="importMask">Import</button>
           </div>
-          <button class="save-load-btn" id="loadImageBtn" style="margin-top:2px;text-align:center;">Load Image</button>
+          <button
+            class="save-load-btn"
+            id="loadImageBtn"
+            style="margin-top: 2px; text-align: center"
+          >
+            Load Image
+          </button>
         </div>
         <div>
           <h2>Presets</h2>
