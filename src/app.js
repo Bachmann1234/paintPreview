@@ -857,6 +857,37 @@ function renderZoneList() {
       });
     });
 
+    // Click hex value to edit color
+    const hexEl = div.querySelector(".zone-hex");
+    hexEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = z.color;
+      input.style.cssText =
+        "background:#0f3460;border:1px solid #1a5276;color:white;font-size:13px;padding:1px 4px;border-radius:3px;width:100%;";
+      hexEl.replaceWith(input);
+      input.focus();
+      input.select();
+      const finish = () => {
+        const raw = input.value.trim();
+        const hex = raw.startsWith("#") ? raw : "#" + raw;
+        if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+          z.color = hex.toUpperCase();
+        }
+        renderZoneList();
+        drawCanvas();
+      };
+      input.addEventListener("blur", finish);
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") input.blur();
+        if (ev.key === "Escape") {
+          input.removeEventListener("blur", finish);
+          renderZoneList();
+        }
+      });
+    });
+
     container.appendChild(div);
   });
 }
