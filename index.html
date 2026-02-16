@@ -158,6 +158,19 @@
         font-family: monospace;
       }
 
+      .zone-entry .color-pick-btn {
+        background: none;
+        border: none;
+        color: #606070;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0 2px;
+        line-height: 1;
+      }
+      .zone-entry .color-pick-btn:hover {
+        color: #e0e0e0;
+      }
+
       .zone-entry .remove-btn {
         background: none;
         border: none;
@@ -200,6 +213,24 @@
         flex: 1;
         text-align: center;
         border-style: solid;
+      }
+
+      .preset-search {
+        width: 100%;
+        padding: 6px 8px;
+        margin-bottom: 6px;
+        background: #0f3460;
+        border: 1px solid #1a5276;
+        border-radius: 6px;
+        color: #e0e0e0;
+        font-size: 12px;
+        outline: none;
+      }
+      .preset-search:focus {
+        border-color: #e94560;
+      }
+      .preset-search::placeholder {
+        color: #606070;
       }
 
       .preset-grid {
@@ -737,6 +768,12 @@
         </div>
         <div>
           <h2>Presets</h2>
+          <input
+            type="text"
+            id="presetSearch"
+            placeholder="Search colors..."
+            class="preset-search"
+          />
           <div class="preset-grid" id="presetGrid"></div>
         </div>
       </div>
