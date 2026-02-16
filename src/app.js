@@ -2352,7 +2352,7 @@ function renderZoneList() {
           z.color = hex.toUpperCase();
         }
         renderZoneList();
-        drawCanvas();
+        render();
       };
       input.addEventListener("blur", finish);
       input.addEventListener("keydown", (ev) => {
