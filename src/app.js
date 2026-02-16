@@ -8,8 +8,6 @@ import {
   blendSoftLight,
 } from "./utils.js";
 
-const IMAGE_PATH = "PXL_20260216_154918869.MP.jpg";
-
 const PRESETS = [
   { name: "Extra White SW 7006", hex: "#EEEFEA" },
   { name: "Pure White SW 7005", hex: "#EDECE6" },
@@ -69,6 +67,7 @@ const MAX_UNDO = 50;
 
 // ===== STATE =====
 let img = null;
+let imageDataUrl = null; // stored data URL of the loaded image
 let originalData = null;
 let maskData = null; // Uint8Array: 0=bg, 1=zone1, 2=zone2, ...
 
@@ -126,13 +125,21 @@ const mainCtx = mainCanvas.getContext("2d", { willReadFrequently: true });
 const compareCtx = compareCanvas.getContext("2d", { willReadFrequently: true });
 const canvasWrapper = document.getElementById("canvasWrapper");
 const canvasContainer = document.getElementById("canvasContainer");
-const loadingEl = document.getElementById("loading");
+const startScreenEl = document.getElementById("startScreen");
 const tooltipEl = document.getElementById("tooltip");
 const brushCursor = document.getElementById("brushCursor");
 const hintOverlay = document.getElementById("hintOverlay");
 
 // ===== INIT =====
 function init() {
+  renderZoneList();
+  renderPresets();
+  setupEvents();
+  setupStartScreen();
+}
+
+function setupImageFromDataUrl(dataUrl) {
+  imageDataUrl = dataUrl;
   img = new Image();
   img.onload = () => {
     mainCanvas.width = img.width;
@@ -148,20 +155,131 @@ function init() {
     // Try loading saved mask
     loadSavedMask();
 
+    // Reset undo/redo for new image
+    undoStack = [];
+    redoStack = [];
+    updateUndoButtons();
+
     resetZoom();
     render();
-    loadingEl.style.display = "none";
+    startScreenEl.classList.add("hidden");
 
     // Show hint if mask is empty
     if (!maskData.some((v) => v > 0)) {
       showHint("Paint wall areas with the brush, then switch to Preview");
     }
   };
-  img.src = IMAGE_PATH;
+  img.src = dataUrl;
+}
 
-  renderZoneList();
-  renderPresets();
-  setupEvents();
+function loadImageFromFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => setupImageFromDataUrl(reader.result);
+  reader.readAsDataURL(file);
+}
+
+function openFilePicker(accept, callback) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = accept;
+  input.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;";
+  document.body.appendChild(input);
+  input.addEventListener("change", () => {
+    const file = input.files[0];
+    document.body.removeChild(input);
+    if (file) callback(file);
+  });
+  input.click();
+}
+
+function setupStartScreen() {
+  document.getElementById("startLoadImage").addEventListener("click", () => {
+    openFilePicker("image/*", loadImageFromFile);
+  });
+
+  document.getElementById("startOpenProject").addEventListener("click", () => {
+    openFilePicker(".json", (file) => handleProjectOrMaskFile(file));
+  });
+
+  // Drag-and-drop
+  const dropZone = document.getElementById("startDrop");
+  startScreenEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+  });
+  startScreenEl.addEventListener("dragleave", (e) => {
+    if (!startScreenEl.contains(e.relatedTarget)) {
+      dropZone.classList.remove("dragover");
+    }
+  });
+  startScreenEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (file.name.endsWith(".json")) {
+      handleProjectOrMaskFile(file);
+    } else if (file.type.startsWith("image/")) {
+      loadImageFromFile(file);
+    }
+  });
+}
+
+function handleProjectOrMaskFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (data.version === 3 && data.image) {
+        // v3 bundled project — load embedded image, then apply mask
+        loadProjectV3(data);
+      } else if (data.version === 2) {
+        // v2 mask-only — needs an image already loaded
+        if (!img) {
+          alert("Load an image first before importing a v2 mask file.");
+          return;
+        }
+        applyImportedMask(data);
+      } else {
+        alert("Unrecognized project file format.");
+      }
+    } catch {
+      alert("Invalid project file.");
+    }
+  };
+  reader.readAsText(file);
+}
+
+function loadProjectV3(data) {
+  const tempImg = new Image();
+  tempImg.onload = () => {
+    imageDataUrl = data.image;
+    img = tempImg;
+
+    mainCanvas.width = img.width;
+    mainCanvas.height = img.height;
+    compareCanvas.width = img.width;
+    compareCanvas.height = img.height;
+
+    mainCtx.drawImage(img, 0, 0);
+    originalData = mainCtx.getImageData(0, 0, img.width, img.height);
+
+    maskData = rlDecode(data.mask, img.width * img.height);
+    if (data.zones) {
+      zones = data.zones;
+      activeZone = 0;
+      renderZoneList();
+    }
+
+    undoStack = [];
+    redoStack = [];
+    updateUndoButtons();
+
+    resetZoom();
+    render();
+    startScreenEl.classList.add("hidden");
+  };
+  tempImg.src = data.image;
 }
 
 // ===== RENDERING =====
@@ -572,6 +690,7 @@ function getMaskPayload() {
 }
 
 function saveMask() {
+  if (!img) return;
   localStorage.setItem("wallMaskData", JSON.stringify(getMaskPayload()));
   const btn = document.getElementById("saveMask");
   btn.textContent = "Saved!";
@@ -580,13 +699,25 @@ function saveMask() {
   }, 1500);
 }
 
+function getProjectPayload() {
+  return {
+    version: 3,
+    width: img.width,
+    height: img.height,
+    zones: zones,
+    mask: rlEncode(maskData),
+    image: imageDataUrl,
+  };
+}
+
 function exportMask() {
-  const json = JSON.stringify(getMaskPayload());
+  if (!img) return;
+  const json = JSON.stringify(getProjectPayload());
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "wall-mask.json";
+  a.download = "wall-project.json";
   a.click();
   URL.revokeObjectURL(url);
   const btn = document.getElementById("exportMask");
@@ -596,36 +727,43 @@ function exportMask() {
   }, 1500);
 }
 
+function applyImportedMask(data) {
+  if (data.width !== img.width || data.height !== img.height) {
+    alert("Mask dimensions do not match current image.");
+    return;
+  }
+  if (data.version === 2 || data.version === 3) {
+    maskData = rlDecode(data.mask, img.width * img.height);
+    if (data.zones) {
+      zones = data.zones;
+      activeZone = 0;
+      renderZoneList();
+    }
+  }
+  undoStack = [];
+  redoStack = [];
+  updateUndoButtons();
+  render();
+}
+
 function importMask() {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".json";
-  input.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;";
-  document.body.appendChild(input);
-  input.addEventListener("change", () => {
-    const file = input.files[0];
-    document.body.removeChild(input);
-    if (!file) return;
+  openFilePicker(".json", (file) => {
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
-        if (data.width !== img.width || data.height !== img.height) {
-          alert("Mask dimensions do not match current image.");
+        if (data.version === 3 && data.image) {
+          loadProjectV3(data);
+        } else if (data.version === 2) {
+          if (!img) {
+            alert("Load an image first before importing a v2 mask file.");
+            return;
+          }
+          applyImportedMask(data);
+        } else {
+          alert("Unrecognized file format.");
           return;
         }
-        if (data.version === 2) {
-          maskData = rlDecode(data.mask, img.width * img.height);
-          if (data.zones) {
-            zones = data.zones;
-            activeZone = 0;
-            renderZoneList();
-          }
-        }
-        undoStack = [];
-        redoStack = [];
-        updateUndoButtons();
-        render();
         const btn = document.getElementById("importMask");
         btn.textContent = "Loaded!";
         setTimeout(() => {
@@ -637,7 +775,6 @@ function importMask() {
     };
     reader.readAsText(file);
   });
-  input.click();
 }
 
 function loadSavedMask() {
@@ -946,6 +1083,7 @@ function setupEvents() {
   // Save / Load
   document.getElementById("saveMask").addEventListener("click", saveMask);
   document.getElementById("loadMask").addEventListener("click", () => {
+    if (!img) return;
     const raw = localStorage.getItem("wallMaskData");
     if (!raw) {
       alert("No saved mask found.");
@@ -982,6 +1120,11 @@ function setupEvents() {
   // Export / Import
   document.getElementById("exportMask").addEventListener("click", exportMask);
   document.getElementById("importMask").addEventListener("click", importMask);
+
+  // Load Image (sidebar)
+  document.getElementById("loadImageBtn").addEventListener("click", () => {
+    openFilePicker("image/*", loadImageFromFile);
+  });
 
   // Tools
   document
