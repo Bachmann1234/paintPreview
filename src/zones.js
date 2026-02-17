@@ -3,6 +3,10 @@ import { render } from "./render.js";
 import { scheduleAutoSave } from "./project.js";
 import { closeSidebarIfMobile } from "./events.js";
 
+function truncate(str, max) {
+  return str.length > max ? str.slice(0, max - 1) + "\u2026" : str;
+}
+
 export function renderZoneList() {
   const container = document.getElementById("zoneList");
   container.innerHTML = "";
@@ -13,7 +17,7 @@ export function renderZoneList() {
       <div class="zone-swatch" style="background:${z.color}" data-idx="${i}"></div>
       <div class="zone-info">
         <div class="zone-name">${z.name}</div>
-        <div class="zone-hex">${z.color}</div>
+        <div class="zone-hex" title="${z.colorName || z.color}">${z.colorName ? truncate(z.colorName, 14) : z.color}</div>
       </div>
       <button class="color-pick-btn" data-idx="${i}" title="Pick color">&#9998;</button>
       ${state.zones.length > 1 ? `<button class="remove-btn" data-idx="${i}">&times;</button>` : ""}
@@ -68,6 +72,7 @@ function pickZoneColor(idx) {
   picker.value = state.zones[idx].color;
   picker.addEventListener("input", (e) => {
     state.zones[idx].color = e.target.value.toUpperCase();
+    state.zones[idx].colorName = null;
     renderZoneList();
     render();
   });
@@ -108,6 +113,7 @@ export function renderPresets(filter = "") {
     div.title = p.name;
     div.addEventListener("click", () => {
       state.zones[state.activeZone].color = p.hex;
+      state.zones[state.activeZone].colorName = p.name;
       state.zones[state.activeZone].name = p.name;
       renderZoneList();
       render();
