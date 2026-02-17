@@ -74,7 +74,7 @@ function pickZoneColor(idx) {
   picker.click();
 }
 
-function removeZone(idx) {
+export function removeZone(idx) {
   if (state.zones.length <= 1) return;
   const removedZoneVal = idx + 1;
   state.zones.splice(idx, 1);
