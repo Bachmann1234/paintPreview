@@ -114,7 +114,6 @@ export function renderPresets(filter = "") {
     div.addEventListener("click", () => {
       state.zones[state.activeZone].color = p.hex;
       state.zones[state.activeZone].colorName = p.name;
-      state.zones[state.activeZone].name = p.name;
       renderZoneList();
       render();
       closeSidebarIfMobile();
