@@ -304,11 +304,11 @@ export function deleteProject(id) {
   localStorage.removeItem(`wallProject_${id}`);
 
   if (state.currentProjectId === id) {
+    state.currentProjectId = null;
     if (list.length > 0) {
       switchProject(list[0].id);
     } else {
       // No projects left — reset
-      state.currentProjectId = null;
       state.img = null;
       state.imageDataUrl = null;
       state.originalData = null;
