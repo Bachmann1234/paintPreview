@@ -307,8 +307,10 @@ export function deleteProject(id) {
     state.currentProjectId = null;
     if (list.length > 0) {
       switchProject(list[0].id);
-    } else {
-      // No projects left — reset
+    }
+    renderProjectSelect();
+    if (!state.currentProjectId) {
+      // No projects left or switchProject failed — reset
       state.img = null;
       state.imageDataUrl = null;
       state.originalData = null;
