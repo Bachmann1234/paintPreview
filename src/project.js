@@ -5,6 +5,17 @@ import { updateUndoButtons } from "./masks.js";
 import { renderZoneList } from "./zones.js";
 import { resetZoom, setView } from "./events.js";
 import { showHint } from "./masks.js";
+import {
+  saveProject as dbSave,
+  loadProject as dbLoad,
+  deleteProjectData,
+} from "./db.js";
+
+// ===== ERROR FEEDBACK =====
+function showSaveError(err) {
+  console.error("Save failed:", err);
+  showHint("Save failed — changes may not persist.");
+}
 
 // ===== IMAGE SETUP =====
 export function setupImageFromDataUrl(dataUrl) {
@@ -148,12 +159,49 @@ export function renderProjectSelect() {
   sel.appendChild(newOpt);
 }
 
+// ===== MIGRATION: localStorage → IndexedDB =====
+async function migrateLocalStorageToIDB() {
+  if (localStorage.getItem("wallProject_idb_migrated") === "1") return;
+
+  // Legacy single-key format → IndexedDB
+  try {
+    const oldRaw = localStorage.getItem("wallProject");
+    const hasList = localStorage.getItem("wallProjectList");
+    if (oldRaw && !hasList) {
+      const id = generateId();
+      const data = JSON.parse(oldRaw);
+      await dbSave(id, data);
+      saveProjectList([{ id, name: "Project 1" }]);
+      localStorage.setItem("wallProjectActive", id);
+      localStorage.removeItem("wallProject");
+    }
+  } catch (err) {
+    console.error("Legacy migration failed:", err);
+  }
+
+  // Multi-project localStorage → IndexedDB
+  const list = getProjectList();
+  for (const entry of list) {
+    try {
+      const raw = localStorage.getItem(`wallProject_${entry.id}`);
+      if (raw) {
+        await dbSave(entry.id, JSON.parse(raw));
+        localStorage.removeItem(`wallProject_${entry.id}`);
+      }
+    } catch (err) {
+      console.error(`Migration failed for project ${entry.id}:`, err);
+    }
+  }
+
+  localStorage.setItem("wallProject_idb_migrated", "1");
+}
+
 // ===== AUTO-SAVE =====
 let autoSaveTimer = null;
 export function scheduleAutoSave() {
   if (!state.img) return;
   clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => {
+  autoSaveTimer = setTimeout(async () => {
     try {
       if (!state.currentProjectId) {
         // First save — create a project entry
@@ -163,42 +211,19 @@ export function scheduleAutoSave() {
         saveProjectList(list);
         renderProjectSelect();
       }
-      localStorage.setItem(
-        `wallProject_${state.currentProjectId}`,
-        JSON.stringify(getProjectPayload()),
-      );
+      await dbSave(state.currentProjectId, getProjectPayload());
       localStorage.setItem("wallProjectActive", state.currentProjectId);
-    } catch {
-      /* storage full or unavailable */
+    } catch (err) {
+      showSaveError(err);
     }
   }, 1000);
 }
 
 // ===== LOAD LAST PROJECT =====
-export function loadLastProject() {
-  // Migration: old single-key format → multi-project
-  try {
-    const oldRaw = localStorage.getItem("wallProject");
-    const hasList = localStorage.getItem("wallProjectList");
-    if (oldRaw && !hasList) {
-      const id = generateId();
-      localStorage.setItem(`wallProject_${id}`, oldRaw);
-      saveProjectList([{ id, name: "Project 1" }]);
-      localStorage.setItem("wallProjectActive", id);
-      localStorage.removeItem("wallProject");
-      state.currentProjectId = id;
-      renderProjectSelect();
-      const data = JSON.parse(oldRaw);
-      if (data.version === 3 && data.image) {
-        loadProjectV3(data);
-        return true;
-      }
-    }
-  } catch {
-    /* ignore */
-  }
+export async function loadLastProject() {
+  await migrateLocalStorageToIDB();
 
-  // Normal load
+  // Check for legacy data that was just migrated
   try {
     const activeId = localStorage.getItem("wallProjectActive");
     const list = getProjectList();
@@ -207,64 +232,56 @@ export function loadLastProject() {
     const entry = list.find((p) => p.id === activeId);
     if (!entry) return false;
 
-    const raw = localStorage.getItem(`wallProject_${activeId}`);
-    if (!raw) return false;
+    const data = await dbLoad(activeId);
+    if (!data) return false;
 
     state.currentProjectId = activeId;
     renderProjectSelect();
 
-    const data = JSON.parse(raw);
     if (data.version === 3 && data.image) {
       loadProjectV3(data);
       return true;
     }
-  } catch {
-    /* ignore bad data */
+  } catch (err) {
+    console.error("Failed to load project:", err);
   }
   return false;
 }
 
 // ===== SWITCH PROJECT =====
-export function switchProject(id) {
+export async function switchProject(id) {
   // Save current project immediately
   if (state.img && state.currentProjectId) {
     try {
-      localStorage.setItem(
-        `wallProject_${state.currentProjectId}`,
-        JSON.stringify(getProjectPayload()),
-      );
-    } catch {
-      /* ignore */
+      await dbSave(state.currentProjectId, getProjectPayload());
+    } catch (err) {
+      showSaveError(err);
     }
   }
 
   // Load the selected project
   try {
-    const raw = localStorage.getItem(`wallProject_${id}`);
-    if (!raw) return;
-    const data = JSON.parse(raw);
+    const data = await dbLoad(id);
+    if (!data) return;
     state.currentProjectId = id;
     localStorage.setItem("wallProjectActive", id);
     renderProjectSelect();
     if (data.version === 3 && data.image) {
       loadProjectV3(data);
     }
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.error("Failed to load project:", err);
   }
 }
 
 // ===== CREATE NEW PROJECT =====
-export function createNewProject(name) {
+export async function createNewProject(name) {
   // Save current project first
   if (state.img && state.currentProjectId) {
     try {
-      localStorage.setItem(
-        `wallProject_${state.currentProjectId}`,
-        JSON.stringify(getProjectPayload()),
-      );
-    } catch {
-      /* ignore */
+      await dbSave(state.currentProjectId, getProjectPayload());
+    } catch (err) {
+      showSaveError(err);
     }
   }
 
@@ -295,18 +312,22 @@ export function createNewProject(name) {
 }
 
 // ===== DELETE PROJECT =====
-export function deleteProject(id) {
+export async function deleteProject(id) {
   if (!confirm("Delete this project? This cannot be undone.")) return;
 
   let list = getProjectList();
   list = list.filter((p) => p.id !== id);
   saveProjectList(list);
-  localStorage.removeItem(`wallProject_${id}`);
+  try {
+    await deleteProjectData(id);
+  } catch (err) {
+    console.error("Failed to delete project data:", err);
+  }
 
   if (state.currentProjectId === id) {
     state.currentProjectId = null;
     if (list.length > 0) {
-      switchProject(list[0].id);
+      await switchProject(list[0].id);
     }
     renderProjectSelect();
     if (!state.currentProjectId) {
@@ -383,7 +404,7 @@ export function applyImportedMask(data) {
 
 export function handleProjectOrMaskFile(file, createEntry = false) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const data = JSON.parse(reader.result);
       if (data.version === 3 && data.image) {
@@ -393,12 +414,9 @@ export function handleProjectOrMaskFile(file, createEntry = false) {
           // Save current project first
           if (state.img && state.currentProjectId) {
             try {
-              localStorage.setItem(
-                `wallProject_${state.currentProjectId}`,
-                JSON.stringify(getProjectPayload()),
-              );
-            } catch {
-              /* ignore */
+              await dbSave(state.currentProjectId, getProjectPayload());
+            } catch (err) {
+              showSaveError(err);
             }
           }
           const id = generateId();

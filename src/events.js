@@ -146,17 +146,17 @@ function setupProjectEvents() {
   const sel = document.getElementById("projectSelect");
   if (!sel) return;
 
-  sel.addEventListener("change", (e) => {
+  sel.addEventListener("change", async (e) => {
     if (e.target.value === "__new__") {
       const name = prompt("New project name:");
       if (name) {
-        createNewProject(name);
+        await createNewProject(name);
       } else {
         // Reset selection back to current
         sel.value = state.currentProjectId;
       }
     } else {
-      switchProject(e.target.value);
+      await switchProject(e.target.value);
     }
   });
 
@@ -170,10 +170,12 @@ function setupProjectEvents() {
     }
   });
 
-  document.getElementById("projectDeleteBtn").addEventListener("click", () => {
-    if (!state.currentProjectId) return;
-    deleteProject(state.currentProjectId);
-  });
+  document
+    .getElementById("projectDeleteBtn")
+    .addEventListener("click", async () => {
+      if (!state.currentProjectId) return;
+      await deleteProject(state.currentProjectId);
+    });
 }
 
 // ===== MAIN EVENT SETUP =====

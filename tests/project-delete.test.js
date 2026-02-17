@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import "fake-indexeddb/auto";
 
 // Mock render and related modules before importing project
 vi.mock("../src/render.js", () => ({
@@ -33,11 +34,17 @@ import {
   renderProjectSelect,
   scheduleAutoSave,
 } from "../src/project.js";
+import {
+  saveProject as dbSave,
+  loadProject as dbLoad,
+  _resetDB,
+} from "../src/db.js";
 
-beforeEach(() => {
+beforeEach(async () => {
   storageMap.clear();
   vi.clearAllMocks();
-  vi.useFakeTimers();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  _resetDB();
 
   // Set up minimal DOM
   document.body.innerHTML = `
@@ -60,32 +67,30 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  _resetDB();
 });
 
-function setupTwoProjects() {
+async function setupTwoProjects() {
   const projects = [
     { id: "proj1", name: "Project 1" },
     { id: "proj2", name: "Project 2" },
   ];
   localStorage.setItem("wallProjectList", JSON.stringify(projects));
-  localStorage.setItem(
-    "wallProject_proj1",
-    JSON.stringify({
-      version: 3,
-      image: "data:image/png;base64,x",
-      zones: [{ name: "Zone 1", color: "#FF0000" }],
-      mask: [[0, 4]],
-    }),
-  );
-  localStorage.setItem(
-    "wallProject_proj2",
-    JSON.stringify({
-      version: 3,
-      image: "data:image/png;base64,y",
-      zones: [{ name: "Zone 1", color: "#00FF00" }],
-      mask: [[0, 4]],
-    }),
-  );
+
+  const proj1Data = {
+    version: 3,
+    image: "data:image/png;base64,x",
+    zones: [{ name: "Zone 1", color: "#FF0000" }],
+    mask: [[0, 4]],
+  };
+  const proj2Data = {
+    version: 3,
+    image: "data:image/png;base64,y",
+    zones: [{ name: "Zone 1", color: "#00FF00" }],
+    mask: [[0, 4]],
+  };
+  await dbSave("proj1", proj1Data);
+  await dbSave("proj2", proj2Data);
   localStorage.setItem("wallProjectActive", "proj1");
 
   state.currentProjectId = "proj1";
@@ -105,8 +110,8 @@ function getDropdownOptions() {
 }
 
 describe("deleteProject", () => {
-  it("removes project from dropdown when deleting current project", () => {
-    setupTwoProjects();
+  it("removes project from dropdown when deleting current project", async () => {
+    await setupTwoProjects();
 
     // Confirm dialog returns true
     vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -118,7 +123,7 @@ describe("deleteProject", () => {
       { value: "__new__", text: "+ New Project..." },
     ]);
 
-    deleteProject("proj1");
+    await deleteProject("proj1");
 
     const after = getDropdownOptions();
     expect(after).toEqual([
@@ -127,36 +132,36 @@ describe("deleteProject", () => {
     ]);
   });
 
-  it("removes project data from localStorage", () => {
-    setupTwoProjects();
+  it("removes project data from IndexedDB and localStorage list", async () => {
+    await setupTwoProjects();
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    deleteProject("proj1");
+    await deleteProject("proj1");
 
-    expect(localStorage.getItem("wallProject_proj1")).toBeNull();
+    expect(await dbLoad("proj1")).toBeUndefined();
 
     const list = JSON.parse(localStorage.getItem("wallProjectList"));
     expect(list).toEqual([{ id: "proj2", name: "Project 2" }]);
   });
 
-  it("does not re-save deleted project data via switchProject", () => {
-    setupTwoProjects();
+  it("does not re-save deleted project data via switchProject", async () => {
+    await setupTwoProjects();
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    deleteProject("proj1");
+    await deleteProject("proj1");
 
     // The deleted project's data should NOT be re-saved
-    expect(localStorage.getItem("wallProject_proj1")).toBeNull();
+    expect(await dbLoad("proj1")).toBeUndefined();
   });
 
-  it("does not re-create deleted project via auto-save", () => {
-    setupTwoProjects();
+  it("does not re-create deleted project via auto-save", async () => {
+    await setupTwoProjects();
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    deleteProject("proj1");
+    await deleteProject("proj1");
 
     // Fast-forward past auto-save timer
-    vi.advanceTimersByTime(2000);
+    await vi.advanceTimersByTimeAsync(2000);
 
     // The project list should still only contain proj2
     const list = JSON.parse(localStorage.getItem("wallProjectList"));
@@ -171,16 +176,16 @@ describe("deleteProject", () => {
     ]);
   });
 
-  it("scheduleAutoSave after delete does not resurrect deleted project", () => {
-    setupTwoProjects();
+  it("scheduleAutoSave after delete does not resurrect deleted project", async () => {
+    await setupTwoProjects();
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    deleteProject("proj1");
+    await deleteProject("proj1");
 
     // Simulate what happens when render() triggers scheduleAutoSave
     // after the deletion (e.g. from loadProjectV3's onload)
     scheduleAutoSave();
-    vi.advanceTimersByTime(2000);
+    await vi.advanceTimersByTimeAsync(2000);
 
     const list = JSON.parse(localStorage.getItem("wallProjectList"));
     const options = getDropdownOptions();
@@ -190,15 +195,15 @@ describe("deleteProject", () => {
     expect(options.find((o) => o.text === "Project 1")).toBeUndefined();
   });
 
-  it("resets state when switchProject fails (missing data)", () => {
-    setupTwoProjects();
+  it("resets state when switchProject fails (missing data)", async () => {
+    await setupTwoProjects();
     // Remove proj2's data so switchProject will fail when falling back to it
-    // (simulate localStorage quota exceeded scenario)
-    storageMap.delete("wallProject_proj2");
+    const { deleteProjectData } = await import("../src/db.js");
+    await deleteProjectData("proj2");
 
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    deleteProject("proj1");
+    await deleteProject("proj1");
 
     // Dropdown should still update (not show stale proj1)
     const options = getDropdownOptions();
@@ -214,33 +219,30 @@ describe("deleteProject", () => {
     ).toBe(false);
 
     // Auto-save should NOT create a ghost project
-    vi.advanceTimersByTime(2000);
+    await vi.advanceTimersByTimeAsync(2000);
     const list = JSON.parse(storageMap.get("wallProjectList") || "[]");
     expect(list.find((p) => p.name === "Project 1")).toBeUndefined();
   });
 
-  it("shows start screen when deleting the last project", () => {
+  it("shows start screen when deleting the last project", async () => {
     // Set up single project
     localStorage.setItem(
       "wallProjectList",
       JSON.stringify([{ id: "only", name: "Only Project" }]),
     );
-    localStorage.setItem(
-      "wallProject_only",
-      JSON.stringify({
-        version: 3,
-        image: "data:image/png;base64,x",
-        zones: [{ name: "Zone 1", color: "#FF0000" }],
-        mask: [[0, 4]],
-      }),
-    );
+    await dbSave("only", {
+      version: 3,
+      image: "data:image/png;base64,x",
+      zones: [{ name: "Zone 1", color: "#FF0000" }],
+      mask: [[0, 4]],
+    });
     state.currentProjectId = "only";
     state.img = { width: 2, height: 2 };
     renderProjectSelect();
 
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    deleteProject("only");
+    await deleteProject("only");
 
     expect(
       document.getElementById("startScreen").classList.contains("hidden"),

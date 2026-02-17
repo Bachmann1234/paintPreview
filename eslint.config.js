@@ -24,6 +24,7 @@ export default [
         console: "readonly",
         confirm: "readonly",
         prompt: "readonly",
+        indexedDB: "readonly",
       },
     },
   },
