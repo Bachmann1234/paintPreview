@@ -262,7 +262,26 @@ export async function switchProject(id) {
   // Load the selected project
   try {
     const data = await dbLoad(id);
-    if (!data) return;
+    if (!data) {
+      state.currentProjectId = id;
+      localStorage.setItem("wallProjectActive", id);
+      state.img = null;
+      state.imageDataUrl = null;
+      state.originalData = null;
+      state.maskData = null;
+      state.zones = [
+        { name: "Zone 1", color: "#D1CBC1" },
+        { name: "Zone 2", color: "#CDD2CA" },
+      ];
+      state.activeZone = 0;
+      state.undoStack = [];
+      state.redoStack = [];
+      updateUndoButtons();
+      renderZoneList();
+      renderProjectSelect();
+      els.startScreen.classList.remove("hidden");
+      return;
+    }
     state.currentProjectId = id;
     localStorage.setItem("wallProjectActive", id);
     renderProjectSelect();
@@ -409,22 +428,37 @@ export function handleProjectOrMaskFile(file, createEntry = false) {
       const data = JSON.parse(reader.result);
       if (data.version === 3 && data.image) {
         if (createEntry) {
-          // Import as a new project
           const name = file.name.replace(/\.json$/i, "") || "Imported Project";
-          // Save current project first
           if (state.img && state.currentProjectId) {
+            // Has data — save it, then create a new entry
             try {
               await dbSave(state.currentProjectId, getProjectPayload());
             } catch (err) {
               showSaveError(err);
             }
+            const id = generateId();
+            const list = getProjectList();
+            list.push({ id, name });
+            saveProjectList(list);
+            state.currentProjectId = id;
+            localStorage.setItem("wallProjectActive", id);
+          } else if (state.currentProjectId) {
+            // Empty project — reuse it, just rename
+            const list = getProjectList();
+            const entry = list.find((p) => p.id === state.currentProjectId);
+            if (entry) {
+              entry.name = name;
+              saveProjectList(list);
+            }
+          } else {
+            // No project at all — create one
+            const id = generateId();
+            const list = getProjectList();
+            list.push({ id, name });
+            saveProjectList(list);
+            state.currentProjectId = id;
+            localStorage.setItem("wallProjectActive", id);
           }
-          const id = generateId();
-          const list = getProjectList();
-          list.push({ id, name });
-          saveProjectList(list);
-          state.currentProjectId = id;
-          localStorage.setItem("wallProjectActive", id);
           renderProjectSelect();
         }
         loadProjectV3(data);

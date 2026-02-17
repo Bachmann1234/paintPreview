@@ -211,7 +211,7 @@ describe("deleteProject", () => {
 
     // state.img should be cleared to prevent auto-save ghost projects
     expect(state.img).toBeNull();
-    expect(state.currentProjectId).toBeNull();
+    expect(state.currentProjectId).toBe("proj2");
 
     // Start screen should appear since switchProject failed
     expect(
