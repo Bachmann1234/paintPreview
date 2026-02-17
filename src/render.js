@@ -4,7 +4,7 @@ import {
   blendOverlay,
   blendSoftLight,
 } from "./utils.js";
-import { state, els, ZONE_TINTS } from "./state.js";
+import { state, els } from "./state.js";
 import { scheduleAutoSave } from "./project.js";
 
 export function applyColors(ctx) {
@@ -87,7 +87,7 @@ export function renderEditView(ctx) {
       const g = src[idx + 1] + (bg * 255 - src[idx + 1]) * previewAlpha;
       const b = src[idx + 2] + (bb * 255 - src[idx + 2]) * previewAlpha;
 
-      const tint = ZONE_TINTS[(zone - 1) % ZONE_TINTS.length];
+      const tint = zc[zone - 1].map((c) => c * 255);
       const tintAmt = 0.12;
       dst[idx] = r * (1 - tintAmt) + tint[0] * tintAmt;
       dst[idx + 1] = g * (1 - tintAmt) + tint[1] * tintAmt;
